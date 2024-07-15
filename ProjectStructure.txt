@@ -1,0 +1,21 @@
+HSQtDAQ/
+├── src/
+│   ├── common/
+│   │   ├── __init__.py
+│   │   └── utils.py
+│   ├── simple_simulation/
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── ni_daq_measurement/
+│   │   ├── __init__.py
+│   │   └── main.py
+│   ├── picoscope_measurement/
+│   │   ├── __init__.py
+│   │   └── main.py
+│   └── main.py
+├── tests/
+│   └── __init__.py
+├── requirements.txt
+├── README.md
+├── LICENSE
+└── .gitignore
