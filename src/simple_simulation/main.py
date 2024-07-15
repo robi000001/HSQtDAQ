@@ -29,7 +29,8 @@ class SimulationWindow(QMainWindow):
         self.data = None
         self.time_axis = None
         self.current_index = 0
-        self.last_update_time = time.time()
+        self.start_time = time.time()
+        self.iterations = 0
 
     def create_input_fields(self):
         input_layout = QHBoxLayout()
@@ -111,6 +112,8 @@ class SimulationWindow(QMainWindow):
                 self.curves.append(curve)
 
             self.timer.start(1000 // self.update_rate)
+        self.start_time = time.time()
+        self.iterations = 0
 
     @Slot()
     def stop_simulation(self):
@@ -121,8 +124,7 @@ class SimulationWindow(QMainWindow):
     def update_plot(self):
         if self.is_running:
             start_time = time.time()
-            update_time = start_time - self.last_update_time
-            self.last_update_time = start_time
+
 
             end_index = min(self.current_index + self.sampling_freq // self.update_rate, len(self.time_axis))
             x = self.time_axis[self.current_index:end_index]
@@ -136,8 +138,12 @@ class SimulationWindow(QMainWindow):
                 self.current_index = 0
 
             processing_time = (time.time() - start_time) * 1000
-            self.processing_time_label.setText(f"Processing Time: {processing_time:.2f} ms")
-            self.frame_rate_label.setText(f"Update Time: {update_time:.2f} ms")
+            total_time = (time.time() - self.start_time) * 1000
+            average_time = total_time / (self.iterations + 1)
+            self.iterations += 1
+
+            self.processing_time_label.setText(f"Average time: {average_time:.2f} ms")
+            self.frame_rate_label.setText(f"Iteration: {self.iterations}")
             # self.frame_rate_label.setText(f"Frame Rate: {1000 / update_time:.2f} Hz")
 
 
