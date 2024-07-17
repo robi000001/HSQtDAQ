@@ -69,3 +69,20 @@ def generate_composite_signal(sampling_freq, sampling_time, num_channels, wave_t
     waves = generate_waves(sampling_freq, sampling_time, num_channels, wave_type)
     noise = generate_random_noise(sampling_freq, sampling_time, num_channels, noise_scale)
     return waves + noise
+
+
+def calculate_rms(data):
+    """Calculate the Root Mean Square (RMS) of the input data."""
+    return np.sqrt(np.mean(np.square(data)))
+
+def calculate_fft(data, sampling_freq):
+    """Calculate the Fast Fourier Transform (FFT) of the input data."""
+    fft_result = np.fft.fft(data)
+    freqs = np.fft.fftfreq(len(data), 1/sampling_freq)
+    return freqs, np.abs(fft_result)
+
+def calculate_snr(signal, noise):
+    """Calculate the Signal-to-Noise Ratio (SNR) in dB."""
+    signal_power = np.mean(np.square(signal))
+    noise_power = np.mean(np.square(noise))
+    return 10 * np.log10(signal_power / noise_power)
