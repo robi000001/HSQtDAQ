@@ -27,8 +27,8 @@ status["trigger"] = ps.ps4000aSetSimpleTrigger(handle, 1, 0, 1024, 2, 0, 1000)
 assert_pico_ok(status["trigger"])
 
 # Set number of pre and post trigger samples to be collected
-preTriggerSamples = 2000
-postTriggerSamples = 2000
+preTriggerSamples = 20000
+postTriggerSamples = 20000
 maxSamples = preTriggerSamples + postTriggerSamples
 
 # Get timebase information
@@ -65,9 +65,10 @@ status["getValues"] = ps.ps4000aGetValues(handle, 0, ctypes.byref(cmaxSamples), 
 assert_pico_ok(status["getValues"])
 
 # Get maximum ADC value
-maxADC = ctypes.c_int16()
+maxADC = ctypes.c_int32()
 status["maximumValue"] = ps.ps4000aMaximumValue(handle, ctypes.byref(maxADC))
 assert_pico_ok(status["maximumValue"])
+print("Max ADC value: ", maxADC)
 
 # Convert ADC counts data to mV
 adc2mVChA = adc2mV(bufferAMax, chARange, maxADC)
