@@ -14,6 +14,26 @@ import time
 class PicoScopeApp(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        # UI elements
+        self.num_channels_ui = None
+        self.sampling_time_ui = None
+        self.sampling_freq_ui = None
+
+        # PicoScope variables
+        self.c_handle = ctypes.c_int16()
+        self.status = {}
+
+        # Measurement variables
+        self.num_samples = None
+        self.preTriggerSamples = None
+        self.postTriggerSamples = None
+        self.timebase = None
+        self.buffers = None
+        self.max_adc = None
+        self.num_channels = None
+
+        # Set up UI
         self.setWindowTitle("PicoScope Measurement")
         self.setGeometry(100, 100, 800, 600)
 
@@ -26,35 +46,33 @@ class PicoScopeApp(QMainWindow):
         self.create_plot()
         self.create_output_fields()
 
-        self.chandle = ctypes.c_int16()
-        self.status = {}
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_measurement)
 
     def create_input_fields(self):
         input_layout = QHBoxLayout()
-        self.sampling_freq = QLineEdit("1000000")
-        self.sampling_time = QLineEdit("1")
-        self.num_channels = QLineEdit("4")
+        self.sampling_freq_ui = QLineEdit("1000000")
+        self.sampling_time_ui = QLineEdit("1")
+        self.num_channels_ui = QLineEdit("4")
         input_layout.addWidget(QLabel("Sampling Frequency (Hz):"))
-        input_layout.addWidget(self.sampling_freq)
+        input_layout.addWidget(self.sampling_freq_ui)
         input_layout.addWidget(QLabel("Sampling Time (s):"))
-        input_layout.addWidget(self.sampling_time)
+        input_layout.addWidget(self.sampling_time_ui)
         input_layout.addWidget(QLabel("Number of Channels:"))
-        input_layout.addWidget(self.num_channels)
+        input_layout.addWidget(self.num_channels_ui)
         self.layout.addLayout(input_layout)
 
     def create_buttons(self):
         button_layout = QHBoxLayout()
-        self.start_button = QPushButton("Start")
-        self.stop_button = QPushButton("Stop")
-        self.exit_button = QPushButton("Exit")
-        self.start_button.clicked.connect(self.start_measurement)
-        self.stop_button.clicked.connect(self.stop_measurement)
-        self.exit_button.clicked.connect(self.close)
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.stop_button)
-        button_layout.addWidget(self.exit_button)
+        start_button = QPushButton("Start")
+        stop_button = QPushButton("Stop")
+        exit_button = QPushButton("Exit")
+        start_button.clicked.connect(self.start_measurement)
+        stop_button.clicked.connect(self.stop_measurement)
+        exit_button.clicked.connect(self.close)
+        button_layout.addWidget(start_button)
+        button_layout.addWidget(stop_button)
+        button_layout.addWidget(exit_button)
         self.layout.addLayout(button_layout)
 
     def create_plot(self):
@@ -70,19 +88,37 @@ class PicoScopeApp(QMainWindow):
         output_layout.addWidget(self.processing_time_label)
         self.layout.addLayout(output_layout)
 
+    def run_block_capture(self):
+        self.status["runBlock"] = ps.ps4000aRunBlock(
+            self.c_handle,
+            self.preTriggerSamples,
+            self.postTriggerSamples,
+            self.timebase,
+            None,
+            0,
+            None,
+            None
+        )
+        assert_pico_ok(self.status["runBlock"])
+
     def start_measurement(self):
         try:
+            # Configuration parameters
+            self.num_channels = int(self.num_channels_ui.text())
+            sampling_freq = int(self.sampling_freq_ui.text())
+            sampling_time = float(self.sampling_time_ui.text())
+            channel_range = 7  # PS4000A_2V
+
             # Open PicoScope
-            self.status["openunit"] = ps.ps4000aOpenUnit(ctypes.byref(self.chandle), None)
-            assert_pico_ok(self.status["openunit"])
+            self.status["open_unit"] = ps.ps4000aOpenUnit(ctypes.byref(self.c_handle), None)
+            assert_pico_ok(self.status["open_unit"])
+            print(f"Picoscope opened: handle: {self.c_handle.value}")
 
             # Configure channels
-            num_channels = int(self.num_channels.text())
-            channel_range = 7  # PS4000A_2V
-            for i in range(num_channels):
+            for i in range(self.num_channels):
                 channel = i  # Use channel number directly
                 self.status[f"setChA{i}"] = ps.ps4000aSetChannel(
-                    self.chandle,
+                    self.c_handle,
                     channel,
                     1,  # enabled
                     1,  # dc coupled
@@ -91,118 +127,120 @@ class PicoScopeApp(QMainWindow):
                 )
                 assert_pico_ok(self.status[f"setChA{i}"])
 
-            # Set up data buffers
-            sampling_freq = int(self.sampling_freq.text())
-            sampling_time = float(self.sampling_time.text())
-            self.num_samples = int(sampling_freq * sampling_time)
-            self.max_adc = ctypes.c_int16()
-            self.status["maximumValue"] = ps.ps4000aMaximumValue(self.chandle, ctypes.byref(self.max_adc))
-            assert_pico_ok(self.status["maximumValue"])
-
-            self.buffers = [np.zeros(self.num_samples, dtype=np.int16) for _ in range(num_channels)]
-            for i, buffer in enumerate(self.buffers):
-                self.status[f"setDataBufferA{i}"] = ps.ps4000aSetDataBuffer(
-                    self.chandle,
-                    i,  # channel
-                    buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                    self.num_samples,
-                    0,  # segment index
-                    0  # ratio mode
-                )
-                assert_pico_ok(self.status[f"setDataBufferA{i}"])
-
-            # Configure streaming
-            # Ensure sample interval is at least 1 µs (1000 ns)
-            sample_interval_ns = max(1000, int(1e9 / sampling_freq))
-            sampleInterval = ctypes.c_uint32(sample_interval_ns)
-            sampleIntervalTimeUnits = ps.PS4000A_TIME_UNITS['PS4000A_NS']
-            maxPreTriggerSamples = ctypes.c_uint32(0)
-            maxPostTriggerSamples = ctypes.c_uint32(self.num_samples)
-            autoStop = ctypes.c_int16(1)
-            downSampleRatio = ctypes.c_uint32(1)
-            downSampleRatioMode = ps.PS4000A_RATIO_MODE['PS4000A_RATIO_MODE_NONE']
-            overviewBufferSize = ctypes.c_uint32(self.num_samples)
-
-            self.status["runStreaming"] = ps.ps4000aRunStreaming(
-                self.chandle,
-                ctypes.byref(sampleInterval),
-                sampleIntervalTimeUnits,
-                maxPreTriggerSamples,
-                maxPostTriggerSamples,
-                autoStop,
-                downSampleRatio,
-                downSampleRatioMode,
-                overviewBufferSize
+            # Set up trigger
+            self.status["setSimpleTrigger"] = ps.ps4000aSetSimpleTrigger(
+                self.c_handle,
+                1,  # enabled
+                0,  # source
+                1024,  # threshold
+                2,  # direction
+                0,  # delay
+                1000  # auto trigger time
             )
-            assert_pico_ok(self.status["runStreaming"])
+            assert_pico_ok(self.status["setSimpleTrigger"])
 
+            # Set number of pre- and post-trigger samples to be collected
+            self.num_samples = int(sampling_freq * sampling_time)
+            self.preTriggerSamples = self.num_samples // 2
+            self.postTriggerSamples = self.num_samples // 2
+            maxSamples = self.preTriggerSamples + self.postTriggerSamples
+
+            # Get timebase information
+            self.timebase = 8
+            timeIntervalns = ctypes.c_float()
+            returnedMaxSamples = ctypes.c_int32()
+            self.status["getTimebase2"] = ps.ps4000aGetTimebase2(
+                self.c_handle,
+                self.timebase,
+                maxSamples,
+                ctypes.byref(timeIntervalns),
+                ctypes.byref(returnedMaxSamples),
+                0
+            )
+
+            # Start measurement
+            self.run_block_capture()
             self.timer.start(50)  # Update every 50 ms
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+            # Print error in details
+            print(e)
             self.stop_measurement()
 
     def update_measurement(self):
         start_time = time.time()
 
-        # Collect data from PicoScope
+        # Check if ready
         ready = ctypes.c_int16(0)
         check = ctypes.c_int16(0)
-        self.status["getStreamingLatestValues"] = ps.ps4000aGetStreamingLatestValues(
-            self.chandle,
-            None,
-            ctypes.byref(ready)
-        )
+        self.status["isReady"] = ps.ps4000aIsReady(self.c_handle, ctypes.byref(ready))
+        # Return if not ready
+        if ready.value == check.value:
+            return
 
-        if ready.value == 1:
-            # Data is ready, process it
-            for i, buffer in enumerate(self.buffers):
-                self.status[f"getValues{i}"] = ps.ps4000aSetDataBuffer(
-                    self.chandle,
-                    i,
-                    buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                    self.num_samples,
-                    0,
-                    0
-                )
-                assert_pico_ok(self.status[f"getValues{i}"])
+        # Set data buffers
 
-            overflow = ctypes.c_int16()
-            cmaxSamples = ctypes.c_uint32(self.num_samples)
-            self.status["getValues"] = ps.ps4000aGetValues(
-                self.chandle,
-                0,
-                ctypes.byref(cmaxSamples),
-                0,
-                0,
-                0,
-                ctypes.byref(overflow)
+        self.buffers = [np.zeros(self.num_samples, dtype=np.int16) for _ in range(self.num_channels)]
+        for i, buffer in enumerate(self.buffers):
+            self.status[f"setDataBufferA{i}"] = ps.ps4000aSetDataBuffer(
+                self.c_handle,
+                i,  # channel
+                buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
+                self.num_samples,
+                0,  # segment index
+                0  # ratio mode
             )
-            assert_pico_ok(self.status["getValues"])
+            assert_pico_ok(self.status[f"setDataBufferA{i}"])
 
-            # Process and update plot
-            self.ax.clear()
-            for i, buffer in enumerate(self.buffers):
-                # Convert ADC counts to millivolts
-                max_adc = self.max_adc.value
-                channel_range = 7  # PS4000A_2V
-                values = adc2mV(buffer, channel_range, max_adc)
-                self.ax.plot(values[:cmaxSamples.value], label=f"Channel {i}")
+        # Get data from scope
+        cmaxSamples = ctypes.c_int32(self.num_samples)
+        for i, buffer in enumerate(self.buffers):
+            self.status[f"getValues{i}"] = ps.ps4000aGetValues(
+                self.c_handle,
+                i,  # channel
+                ctypes.byref(cmaxSamples),
+                0,  # downSampleRatio
+                0,  # downSampleRatioMode
+                0,  # segment index
+                None  # overflow
+            )
+            assert_pico_ok(self.status[f"getValues{i}"])
 
-            self.ax.legend()
-            self.canvas.draw()
 
-            # Update output fields
-            end_time = time.time()
-            processing_time = (end_time - start_time) * 1000
-            self.processing_time_label.setText(f"Average Processing Time: {processing_time:.2f} ms")
-            self.frame_rate_label.setText(f"Average Frame Rate: {1 / (end_time - start_time):.2f} Hz")
+        # Get maximum ADC value
+        self.max_adc = ctypes.c_int16()
+        self.status["maximumValue"] = ps.ps4000aMaximumValue(self.c_handle, ctypes.byref(self.max_adc))
+        assert_pico_ok(self.status["maximumValue"])
+        print(f"Maximum ADC value: {self.max_adc.value}")
+
+
+
+        # Process and update plot
+        self.ax.clear()
+        for i, buffer in enumerate(self.buffers):
+            # Convert ADC counts to millivolts
+            channel_range = 7  # PS4000A_2V
+            values = adc2mV(buffer, channel_range, self.max_adc)
+            self.ax.plot(values[:cmaxSamples.value], label=f"Channel {i}")
+
+        self.ax.legend()
+        self.canvas.draw()
+
+        # Update output fields
+        end_time = time.time()
+        processing_time = (end_time - start_time) * 1000
+        self.processing_time_label.setText(f"Average Processing Time: {processing_time:.2f} ms")
+        self.frame_rate_label.setText(f"Average Frame Rate: {1 / (end_time - start_time):.2f} Hz")
+
+        # Start next acquisition
+        self.run_block_capture()
 
     def stop_measurement(self):
-        if hasattr(self, 'chandle'):
-            self.status["stop"] = ps.ps4000aStop(self.chandle)
+        if hasattr(self, 'c_handle'):
+            self.status["stop"] = ps.ps4000aStop(self.c_handle)
             assert_pico_ok(self.status["stop"])
-            self.status["close"] = ps.ps4000aCloseUnit(self.chandle)
+            self.status["close"] = ps.ps4000aCloseUnit(self.c_handle)
             assert_pico_ok(self.status["close"])
         self.timer.stop()
 
