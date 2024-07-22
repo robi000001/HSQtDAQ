@@ -1,5 +1,35 @@
 import numpy as np
 from scipy import signal
+from typing import Union, overload
+
+
+@overload
+def scale_adc_two_complement(input_data: int, bit_resolution: int, voltage_range: float) -> float:
+    ...
+
+
+@overload
+def scale_adc_two_complement(input_data: np.ndarray, bit_resolution: int, voltage_range: float) -> np.ndarray:
+    ...
+
+
+def scale_adc_two_complement(
+    input_data: Union[int, np.ndarray],
+    bit_resolution: int,
+    voltage_range: float
+) -> Union[float, np.ndarray]:
+    """Scale ADC data from two's complement to voltage.
+
+    :param input_data: Input data in two's complement format (skalars or numpy array)
+    :param bit_resolution: Bit resolution of the ADC
+    :param voltage_range: Voltage range of the ADC
+    :return: Scaled data in volts
+    """
+    # Calculate the scaling factor
+    scaling_factor = voltage_range / (2 ** (bit_resolution - 1))  # range / 2^(n-1), no need to subtract 1!
+    # Scale the data
+    return input_data * scaling_factor
+
 
 
 def generate_waves(sampling_freq, sampling_time, num_channels, wave_type='sine'):

@@ -3,6 +3,9 @@ HSQtDAQ/
 │   ├── common/
 │   │   ├── __init__.py
 │   │   └── utils.py
+│   ├── gui_tools/
+│   │   ├── __init__.py
+│   │   └── daq_window.py
 │   ├── simple_simulation/
 │   │   ├── __init__.py
 │   │   └── main.py
