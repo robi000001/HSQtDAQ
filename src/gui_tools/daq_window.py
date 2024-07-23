@@ -4,6 +4,11 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import Qt
 import pyqtgraph as pg
 
+
+def set_parameter_value(parameter_widget, value):
+    parameter_widget.setText(str(value))
+
+
 class DAQWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -60,9 +65,7 @@ class DAQWindow(QMainWindow):
         main_layout.addLayout(top_layout)
         main_layout.addWidget(splitter)
 
-        # Setup parameter list and plots
-        self.setup_parameter_list()
-        self.setup_plots()
+
 
     def setup_parameter_list(self):
         # Implement this method in the subclass
@@ -97,32 +100,56 @@ class DAQWindow(QMainWindow):
     def add_parameter(self, name, default_value=""):
         row = self.parameter_layout.rowCount()
         self.parameter_layout.addWidget(QLabel(name), row, 0)
-        line_edit = QLineEdit(default_value)
+        line_edit = QLineEdit(str(default_value))
         # line_edit.setMaximumWidth(100)  # Set maximum width for input fields
         self.parameter_layout.addWidget(line_edit, row, 1)
         return line_edit
 
-    def get_parameter_value(self, parameter_widget, value_type=str):
-        return value_type(parameter_widget.text())
+    @staticmethod
+    def get_string_parameter(parameter_widget):
+        return parameter_widget.text()
 
-    def set_parameter_value(self, parameter_widget, value):
-        parameter_widget.setText(str(value))
+    @staticmethod
+    def get_int_parameter_value(parameter_widget) -> int:
+        return int(parameter_widget.text())
+
+    @staticmethod
+    def get_float_parameter_value(parameter_widget) -> float:
+        string_value = parameter_widget.text()
+        # replace comma with dot to handle both comma and dot as decimal separator
+        string_value = string_value.replace(",", ".")
+        return float(string_value)
 
     def add_plot_tab(self, name):
         plot_widget = pg.PlotWidget()
         self.tab_widget.addTab(plot_widget, name)
         return plot_widget
 
+    def add_widget_tab(self, widget, name):
+        self.tab_widget.addTab(widget, name)
+
     def closeEvent(self, event):
         self.close_daq()
         event.accept()
+
 
 # Example usage:
 if __name__ == "__main__":
     import sys
     from PySide6.QtWidgets import QApplication
 
+
+
     class MyDAQWindow(DAQWindow):
+
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("Demo window")
+
+            # Setup parameter list and plots
+            self.setup_parameter_list()
+            self.setup_plots()
+
         def setup_parameter_list(self):
             self.param1 = self.add_parameter("Parameter 1", "0")
             self.param2 = self.add_parameter("Parameter 2", "1.0")
@@ -133,8 +160,8 @@ if __name__ == "__main__":
 
         def start_measurement(self):
             print("Starting measurement")
-            print(f"Parameter 1: {self.get_parameter_value(self.param1, int)}")
-            print(f"Parameter 2: {self.get_parameter_value(self.param2, float)}")
+            print(f"Parameter 1: {self.get_string_parameter(self.param1)}")
+            print(f"Parameter 2: {self.get_string_parameter(self.param2)}")
 
         def stop_measurement(self):
             print("Stopping measurement")
