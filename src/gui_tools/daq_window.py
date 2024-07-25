@@ -1,8 +1,11 @@
+import numpy as np
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QLineEdit, QLabel, QGridLayout,
                                QTabWidget, QFileDialog, QSplitter)
 from PySide6.QtCore import Qt
 import pyqtgraph as pg
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 
 def set_parameter_value(parameter_widget, value):
@@ -83,6 +86,20 @@ class DAQWindow(QMainWindow):
         # Implement this method in the subclass
         pass
 
+    def process_data(self, x_data: np.ndarray, y_data: list[np.ndarray]) -> None:
+        """
+        Method to process the acquired data and update the plots or internal variables.
+
+        Args:
+            x_data (np.ndarray): The time axis data.
+            y_data (list[np.ndarray]): List of voltage data for each channel.
+
+        Returns:
+            None: This method updates the internal state and plot but does not return a value.
+        """
+        # Implement this method in the subclass
+        pass
+
     def save_data(self):
         # Implement this method in the subclass
         pass
@@ -124,6 +141,12 @@ class DAQWindow(QMainWindow):
         plot_widget = pg.PlotWidget()
         self.tab_widget.addTab(plot_widget, name)
         return plot_widget
+
+    def add_pyplot_tab(self, name):
+        figure, ax = plt.subplots()
+        canvas = FigureCanvas(figure)
+        self.tab_widget.addTab(canvas, name)
+        return canvas, figure, ax
 
     def add_widget_tab(self, widget, name):
         self.tab_widget.addTab(widget, name)
