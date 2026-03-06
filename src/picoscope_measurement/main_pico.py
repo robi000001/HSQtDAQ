@@ -44,6 +44,7 @@ class PicoScopeApp(DAQWindow):
         self.buffers = None
         self.max_adc = None
         self.num_channels = None
+        self.values = []
 
         # Setup parameter list and plots
         self.setup_parameter_list()
@@ -55,9 +56,10 @@ class PicoScopeApp(DAQWindow):
         self.sampling_freq_ui = self.add_parameter("Sampling Frequency (Hz)", 1000000)
 
     def setup_plots(self):
-        self.figure, self.ax = plt.subplots()
-        self.canvas = FigureCanvas(self.figure)
-        self.add_widget_tab(self.canvas, "Waveforms")
+        self.canvas, self.figure, self.ax = self.add_pyplot_tab("Waveforms")
+        # self.figure, self.ax = plt.subplots()
+        # self.canvas = FigureCanvas(self.figure)
+        # self.add_widget_tab(self.canvas, "Waveforms")
 
     def run_block_capture(self):
         self.status["runBlock"] = ps.ps4000aRunBlock(
@@ -187,22 +189,25 @@ class PicoScopeApp(DAQWindow):
         self.status["maximumValue"] = ps.ps4000aMaximumValue(self.c_handle, ctypes.byref(self.max_adc))
         assert_pico_ok(self.status["maximumValue"])
 
-        # Process and update plot
-        self.ax.clear()
-        # Create time data
+        # convert buffers to Voltage and store in self.values
+        self.values = []
+        for i, buffer in enumerate(self.buffers):
+            values = scale_adc_two_complement(buffer[:cmax_samples.value], 16, 2.0)
+            self.values.append(values)
+        # calculate time axis
         dt_s = self.dt_ns * 1e-9
         time_axis = np.linspace(- self.preTriggerSamples * dt_s
                            , (self.postTriggerSamples - 1) * dt_s, self.preTriggerSamples+self.postTriggerSamples)
         # time = np.linspace(0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value)
-
         time_axis = time_axis[:cmax_samples.value]
 
-        for i, buffer in enumerate(self.buffers):
+        # Process and update plot
+        self.ax.clear()
+        # Create time data
+
+        for i, values in enumerate(self.values):
             # Convert ADC counts to millivolts
             channel_range = 7  # PS4000A_2V
-            # values = adc2mV(buffer, channel_range, self.max_adc)
-            values = buffer
-            values = scale_adc_two_complement(values[:cmax_samples.value], 16, 2.0)
             self.ax.plot(time_axis, values, label=f"Channel {i}")
 
         self.ax.legend()
@@ -213,6 +218,8 @@ class PicoScopeApp(DAQWindow):
         processing_time = (end_time - start_time) * 1000
         # self.processing_time_label.setText(f"Average Processing Time: {processing_time:.2f} ms")
         # self.frame_rate_label.setText(f"Average Frame Rate: {1 / (end_time - start_time):.2f} Hz")
+
+        self.process_data(time_axis, self.values)
 
         # Start next acquisition
         self.run_block_capture()
