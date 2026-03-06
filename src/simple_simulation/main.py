@@ -4,6 +4,13 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayou
 from PySide6.QtCore import QTimer, Slot
 import pyqtgraph as pg
 import time
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 from src.common.utils import generate_composite_signal
 
 

@@ -6,6 +6,12 @@ from picosdk.ps4000a import ps4000a as ps
 from picosdk.functions import adc2mV, assert_pico_ok
 import ctypes
 import time
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from src.gui_tools.daq_window import DAQWindow
 from src.common.utils import scale_adc_two_complement
